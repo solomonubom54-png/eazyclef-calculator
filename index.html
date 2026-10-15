@@ -218,6 +218,34 @@ main {
 
 .calc-btn:active { transform: scale(0.98); background: var(--gold-light); }
 
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.btn-row .calc-btn {
+  flex: 1;
+  margin-top: 0;
+}
+
+.reset-btn {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 15px 20px;
+  color: var(--muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.reset-btn:hover { border-color: var(--red); color: var(--red); }
+.reset-btn:active { transform: scale(0.98); }
+
 .results { margin-top: 28px; display: none; }
 .results.visible { display: block; }
 
@@ -393,7 +421,7 @@ main {
     <button class="pair-btn" data-pair="XAUUSD">XAUUSD</button>
   </div>
 
-  <div class="section-label">Setup Type</div>
+  <div class="section-label">Direction</div>
   <div class="setup-row">
     <button class="setup-btn buy" data-type="buy">BUY</button>
     <button class="setup-btn sell" data-type="sell">SELL</button>
@@ -418,7 +446,10 @@ main {
     <span id="rate-status">Fetching live rate...</span>
   </div>
 
-  <button class="calc-btn" id="calc-btn">Calculate</button>
+  <div class="btn-row">
+    <button class="calc-btn" id="calc-btn">Calculate</button>
+    <button class="reset-btn" id="reset-btn">Reset</button>
+  </div>
 
   <div class="error-msg" id="error-msg"></div>
 
@@ -542,7 +573,7 @@ document.head.appendChild(appleIcon);
 
 // ── SERVICE WORKER
 const SW = `
-const CACHE='eazyclef-v3';
+const CACHE='eazyclef-v4';
 self.addEventListener('install',e=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil(clients.claim()));
 self.addEventListener('fetch',e=>{
@@ -572,29 +603,59 @@ let selectedPair = null;
 let selectedType = null;
 let liveRates = {};
 
-// ── FETCH LIVE RATES
+// ── FETCH LIVE RATES (3-API fallback chain)
+async function fetchWithTimeout(url, ms = 4000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (e) {
+    clearTimeout(timer);
+    throw e;
+  }
+}
+
 async function fetchRates(pair) {
   const note = document.getElementById('rate-note');
   const status = document.getElementById('rate-status');
   note.classList.add('visible');
   status.innerHTML = '<span class="spinner"></span>Fetching live rate...';
 
-  const needed = [];
-  if (pair === 'AUDCHF') needed.push('CHF');
-  if (pair === 'GBPAUD') needed.push('AUD');
-  if (needed.length === 0) { note.classList.remove('visible'); return; }
+  const currency = pair === 'AUDCHF' ? 'CHF' : 'AUD';
 
-  try {
-    const res = await fetch(`https://api.frankfurter.app/latest?from=USD&to=${needed.join(',')}`);
+  async function tryFrankfurter() {
+    const res = await fetchWithTimeout(`https://api.frankfurter.app/latest?from=USD&to=${currency}`);
     const data = await res.json();
-    if (data.rates.CHF) liveRates['USDCHF'] = data.rates.CHF;
-    if (data.rates.AUD) liveRates['AUDUSD'] = 1 / data.rates.AUD;
+    return data.rates[currency];
+  }
 
-    const parts = [];
-    if (pair === 'AUDCHF' && liveRates['USDCHF']) parts.push(`USDCHF ${liveRates['USDCHF'].toFixed(5)}`);
-    if (pair === 'GBPAUD' && liveRates['AUDUSD']) parts.push(`AUDUSD ${liveRates['AUDUSD'].toFixed(5)}`);
-    status.textContent = parts.join('  ·  ') + '  (live)';
-  } catch {
+  async function tryExchangeRateAPI() {
+    const res = await fetchWithTimeout(`https://open.er-api.com/v6/latest/USD`);
+    const data = await res.json();
+    return data.rates[currency];
+  }
+
+  async function tryFawaz() {
+    const res = await fetchWithTimeout(`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json`);
+    const data = await res.json();
+    return data.usd[currency.toLowerCase()];
+  }
+
+  let rate = null;
+  for (const api of [tryFrankfurter, tryExchangeRateAPI, tryFawaz]) {
+    try { rate = await api(); if (rate) break; } catch { continue; }
+  }
+
+  if (rate) {
+    if (currency === 'CHF') liveRates['USDCHF'] = rate;
+    if (currency === 'AUD') liveRates['AUDUSD'] = 1 / rate;
+    const label = pair === 'AUDCHF'
+      ? `USDCHF ${liveRates['USDCHF'].toFixed(5)}`
+      : `AUDUSD ${liveRates['AUDUSD'].toFixed(5)}`;
+    status.textContent = `${label}  (live)`;
+  } else {
     status.textContent = 'Could not fetch live rate. Enter manually below.';
     showManualInputs(pair);
   }
@@ -621,6 +682,17 @@ function clearManualInputs() {
   });
 }
 
+// ── RESET
+function resetAll() {
+  document.getElementById('entry').value = '';
+  document.getElementById('sl').value = '';
+  document.getElementById('risk').value = '';
+  hideResults();
+  hideError();
+}
+
+document.getElementById('reset-btn').addEventListener('click', resetAll);
+
 // ── PAIR BUTTONS
 document.querySelectorAll('.pair-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -630,7 +702,7 @@ document.querySelectorAll('.pair-btn').forEach(btn => {
     clearManualInputs();
     document.getElementById('rate-note').classList.remove('visible');
     if (selectedPair === 'AUDCHF' || selectedPair === 'GBPAUD') fetchRates(selectedPair);
-    hideResults();
+    resetAll();
   });
 });
 
