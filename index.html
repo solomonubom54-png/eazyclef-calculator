@@ -198,7 +198,20 @@ main {
   display: none;
 }
 
-.rate-note.visible { display: block; }
+.rate-note.visible { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+.rate-refresh {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #c9a84c;
+  flex-shrink: 0;
+  padding: 2px;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+.rate-refresh:hover { opacity: 1; }
+.rate-refresh svg { display: block; }
 
 .calc-btn {
   width: 100%;
@@ -444,6 +457,12 @@ main {
 
   <div class="rate-note" id="rate-note">
     <span id="rate-status">Fetching live rate...</span>
+    <button class="rate-refresh" id="rate-refresh" title="Refresh rate">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+    </button>
   </div>
 
   <div class="btn-row">
@@ -573,11 +592,18 @@ document.head.appendChild(appleIcon);
 
 // ── SERVICE WORKER
 const SW = `
-const CACHE='eazyclef-v4';
+const CACHE='eazyclef-v5';
 self.addEventListener('install',e=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil(clients.claim()));
 self.addEventListener('fetch',e=>{
-  if(e.request.url.includes('frankfurter')||e.request.url.includes('googleapis'))return;
+  const url = e.request.url;
+  if(
+    url.includes('frankfurter') ||
+    url.includes('googleapis') ||
+    url.includes('open.er-api') ||
+    url.includes('jsdelivr.net') ||
+    url.includes('fawazahmed0')
+  ) return;
   e.respondWith(caches.open(CACHE).then(cache=>cache.match(e.request).then(cached=>{
     const fresh=fetch(e.request).then(res=>{cache.put(e.request,res.clone());return res;});
     return cached||fresh;
@@ -692,6 +718,10 @@ function resetAll() {
 }
 
 document.getElementById('reset-btn').addEventListener('click', resetAll);
+
+document.getElementById('rate-refresh').addEventListener('click', () => {
+  if (selectedPair === 'AUDCHF' || selectedPair === 'GBPAUD') fetchRates(selectedPair);
+});
 
 // ── PAIR BUTTONS
 document.querySelectorAll('.pair-btn').forEach(btn => {
