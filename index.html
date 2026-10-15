@@ -590,28 +590,14 @@ appleIcon.rel = 'apple-touch-icon';
 appleIcon.href = generateIconDataURL(180);
 document.head.appendChild(appleIcon);
 
-// ── SERVICE WORKER
-const SW = `
-const CACHE='eazyclef-v5';
-self.addEventListener('install',e=>self.skipWaiting());
-self.addEventListener('activate',e=>e.waitUntil(clients.claim()));
-self.addEventListener('fetch',e=>{
-  const url = e.request.url;
-  if(
-    url.includes('frankfurter') ||
-    url.includes('googleapis') ||
-    url.includes('open.er-api') ||
-    url.includes('jsdelivr.net') ||
-    url.includes('fawazahmed0')
-  ) return;
-  e.respondWith(caches.open(CACHE).then(cache=>cache.match(e.request).then(cached=>{
-    const fresh=fetch(e.request).then(res=>{cache.put(e.request,res.clone());return res;});
-    return cached||fresh;
-  })));
-});`;
-if('serviceWorker' in navigator){
-  const swBlob = new Blob([SW],{type:'application/javascript'});
-  navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(()=>{});
+// ── SERVICE WORKER — unregister all old workers and clear all caches
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(registrations => {
+    registrations.forEach(r => r.unregister());
+  });
+  caches.keys().then(keys => {
+    keys.forEach(k => caches.delete(k));
+  });
 }
 
 // ── PAIR CONFIG
@@ -651,20 +637,23 @@ async function fetchRates(pair) {
 
   const currency = pair === 'AUDCHF' ? 'CHF' : 'AUD';
 
+  const bust = `&_=${Date.now()}`;
+  const bustQ = `?_=${Date.now()}`;
+
   async function tryFrankfurter() {
-    const res = await fetchWithTimeout(`https://api.frankfurter.app/latest?from=USD&to=${currency}`);
+    const res = await fetchWithTimeout(`https://api.frankfurter.app/latest?from=USD&to=${currency}${bust}`);
     const data = await res.json();
     return data.rates[currency];
   }
 
   async function tryExchangeRateAPI() {
-    const res = await fetchWithTimeout(`https://open.er-api.com/v6/latest/USD`);
+    const res = await fetchWithTimeout(`https://open.er-api.com/v6/latest/USD${bustQ}`);
     const data = await res.json();
     return data.rates[currency];
   }
 
   async function tryFawaz() {
-    const res = await fetchWithTimeout(`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json`);
+    const res = await fetchWithTimeout(`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json${bustQ}`);
     const data = await res.json();
     return data.usd[currency.toLowerCase()];
   }
