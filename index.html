@@ -542,7 +542,7 @@ document.head.appendChild(appleIcon);
 
 // ── SERVICE WORKER
 const SW = `
-const CACHE='eazyclef-v2';
+const CACHE='eazyclef-v3';
 self.addEventListener('install',e=>self.skipWaiting());
 self.addEventListener('activate',e=>e.waitUntil(clients.claim()));
 self.addEventListener('fetch',e=>{
@@ -558,10 +558,6 @@ if('serviceWorker' in navigator){
 }
 
 // ── PAIR CONFIG
-// spread: points for 5-decimal pairs, raw value for gold
-// For all pairs:
-//   BUY  → entry += spread once, SL += spread once
-//   SELL → SL += spread twice, entry unchanged
 const PAIRS = {
   EURUSD: { spread: 10,   decimals: 5, type: 'usd_quote' },
   GBPUSD: { spread: 10,   decimals: 5, type: 'usd_quote' },
@@ -577,43 +573,41 @@ let selectedType = null;
 let liveRates = {};
 
 // ── FETCH LIVE RATES
-async function fetchRates(pairs) {
+async function fetchRates(pair) {
   const note = document.getElementById('rate-note');
   const status = document.getElementById('rate-status');
   note.classList.add('visible');
   status.innerHTML = '<span class="spinner"></span>Fetching live rate...';
 
   const needed = [];
-  if (pairs.includes('AUDCHF')) needed.push('CHF');
-  if (pairs.includes('GBPAUD')) needed.push('AUD');
-
+  if (pair === 'AUDCHF') needed.push('CHF');
+  if (pair === 'GBPAUD') needed.push('AUD');
   if (needed.length === 0) { note.classList.remove('visible'); return; }
 
   try {
     const res = await fetch(`https://api.frankfurter.app/latest?from=USD&to=${needed.join(',')}`);
     const data = await res.json();
-    // Store as USDCHF and AUDUSD (we need AUDUSD = 1/USDAUD)
     if (data.rates.CHF) liveRates['USDCHF'] = data.rates.CHF;
-    if (data.rates.AUD) liveRates['AUDUSD'] = 1 / data.rates.AUD; // invert USDAUD → AUDUSD
+    if (data.rates.AUD) liveRates['AUDUSD'] = 1 / data.rates.AUD;
 
     const parts = [];
-    if (liveRates['USDCHF']) parts.push(`USDCHF ${liveRates['USDCHF'].toFixed(5)}`);
-    if (liveRates['AUDUSD']) parts.push(`AUDUSD ${liveRates['AUDUSD'].toFixed(5)}`);
+    if (pair === 'AUDCHF' && liveRates['USDCHF']) parts.push(`USDCHF ${liveRates['USDCHF'].toFixed(5)}`);
+    if (pair === 'GBPAUD' && liveRates['AUDUSD']) parts.push(`AUDUSD ${liveRates['AUDUSD'].toFixed(5)}`);
     status.textContent = parts.join('  ·  ') + '  (live)';
   } catch {
     status.textContent = 'Could not fetch live rate. Enter manually below.';
-    showManualInputs(pairs);
+    showManualInputs(pair);
   }
 }
 
-function showManualInputs(pairs) {
-  if (pairs.includes('AUDCHF') && !document.getElementById('manual-usdchf-group')) {
+function showManualInputs(pair) {
+  if (pair === 'AUDCHF' && !document.getElementById('manual-usdchf-group')) {
     const g = document.createElement('div');
     g.className = 'input-group'; g.id = 'manual-usdchf-group';
     g.innerHTML = `<label>USDCHF Rate</label><input type="number" id="manual-usdchf" placeholder="e.g. 0.88500" step="any" inputmode="decimal">`;
     document.getElementById('rate-note').after(g);
   }
-  if (pairs.includes('GBPAUD') && !document.getElementById('manual-audusd-group')) {
+  if (pair === 'GBPAUD' && !document.getElementById('manual-audusd-group')) {
     const g = document.createElement('div');
     g.className = 'input-group'; g.id = 'manual-audusd-group';
     g.innerHTML = `<label>AUDUSD Rate</label><input type="number" id="manual-audusd" placeholder="e.g. 0.64500" step="any" inputmode="decimal">`;
@@ -623,8 +617,7 @@ function showManualInputs(pairs) {
 
 function clearManualInputs() {
   ['manual-usdchf-group','manual-audusd-group'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.remove();
+    const el = document.getElementById(id); if (el) el.remove();
   });
 }
 
@@ -636,10 +629,7 @@ document.querySelectorAll('.pair-btn').forEach(btn => {
     selectedPair = btn.dataset.pair;
     clearManualInputs();
     document.getElementById('rate-note').classList.remove('visible');
-
-    if (selectedPair === 'AUDCHF' || selectedPair === 'GBPAUD') {
-      fetchRates([selectedPair]);
-    }
+    if (selectedPair === 'AUDCHF' || selectedPair === 'GBPAUD') fetchRates(selectedPair);
     hideResults();
   });
 });
@@ -654,24 +644,26 @@ document.querySelectorAll('.setup-btn').forEach(btn => {
   });
 });
 
-// ── CALCULATE
+// ── HELPERS
 document.getElementById('calc-btn').addEventListener('click', calculate);
 
 function showError(msg) {
   const el = document.getElementById('error-msg');
-  el.textContent = msg;
-  el.classList.add('visible');
+  el.textContent = msg; el.classList.add('visible');
 }
 function hideError() { document.getElementById('error-msg').classList.remove('visible'); }
 function hideResults() {
-  document.getElementById('results').classList.remove('visible');
-  hideError();
+  document.getElementById('results').classList.remove('visible'); hideError();
 }
 
-function applySpread(price, spreadPoints, decimals, isGold) {
+function addSpread(price, spreadPoints, decimals, isGold) {
   if (isGold) return parseFloat((price + spreadPoints).toFixed(decimals));
-  const spreadVal = spreadPoints / 100000;
-  return parseFloat((price + spreadVal).toFixed(decimals));
+  return parseFloat((price + spreadPoints / 100000).toFixed(decimals));
+}
+
+function subtractSpread(price, spreadPoints, decimals, isGold) {
+  if (isGold) return parseFloat((price - spreadPoints).toFixed(decimals));
+  return parseFloat((price - spreadPoints / 100000).toFixed(decimals));
 }
 
 function getSLPoints(p1, p2, isGold) {
@@ -680,8 +672,7 @@ function getSLPoints(p1, p2, isGold) {
 }
 
 function calculate() {
-  hideError();
-  hideResults();
+  hideError(); hideResults();
 
   if (!selectedPair) return showError('Please select a currency pair.');
   if (!selectedType) return showError('Please select BUY or SELL.');
@@ -692,7 +683,6 @@ function calculate() {
 
   if (isNaN(entry) || isNaN(sl) || isNaN(risk)) return showError('Please fill in all fields.');
   if (risk <= 0) return showError('Risk amount must be greater than 0.');
-
   if (selectedType === 'buy'  && sl >= entry) return showError('For a BUY, SL must be below entry.');
   if (selectedType === 'sell' && sl <= entry) return showError('For a SELL, SL must be above entry.');
 
@@ -700,7 +690,7 @@ function calculate() {
   const isGold = cfg.type === 'gold';
   const spread = cfg.spread;
 
-  // ── Get live/manual rates for cross pairs
+  // ── Live/manual rates
   let usdchf = liveRates['USDCHF'];
   let audusd  = liveRates['AUDUSD'];
 
@@ -716,19 +706,19 @@ function calculate() {
   }
 
   // ── Spread adjustment
-  // BUY:  entry += spread×1,  SL += spread×1
-  // SELL: entry unchanged,    SL += spread×2
+  // BUY:  entry += spread,    SL -= spread
+  // SELL: entry unchanged,    SL += spread × 2
   let adjEntry = entry;
   let adjSL    = sl;
 
   if (selectedType === 'buy') {
-    adjEntry = applySpread(entry, spread,     cfg.decimals, isGold);
-    adjSL    = applySpread(sl,    spread,     cfg.decimals, isGold);
+    adjEntry = addSpread(entry, spread, cfg.decimals, isGold);
+    adjSL    = subtractSpread(sl, spread, cfg.decimals, isGold);
   } else {
-    adjSL    = applySpread(sl,    spread * 2, cfg.decimals, isGold);
+    adjSL    = addSpread(sl, spread * 2, cfg.decimals, isGold);
   }
 
-  // ── SL distance in points
+  // ── SL distance
   const slPoints = getSLPoints(adjEntry, adjSL, isGold);
   if (slPoints === 0) return showError('Entry and SL are too close.');
 
@@ -737,22 +727,18 @@ function calculate() {
   if (isGold) {
     lotSize = risk / slPoints / 100;
   } else if (cfg.type === 'usd_quote') {
-    // EURUSD, GBPUSD, AUDUSD
     lotSize = risk / slPoints;
   } else if (cfg.type === 'usd_base') {
-    // USDCHF
     lotSize = (risk * adjEntry) / slPoints;
   } else if (cfg.type === 'cross_chf') {
-    // AUDCHF: Risk × USDCHF / SL points
     lotSize = (risk * usdchf) / slPoints;
   } else if (cfg.type === 'cross_aud') {
-    // GBPAUD: Risk / AUDUSD / SL points
     lotSize = risk / audusd / slPoints;
   }
 
   lotSize = Math.round(lotSize * 100) / 100;
 
-  // ── TP at 1:3 (from original entry, not adjusted)
+  // ── TP at 1:3
   const slDistance = Math.abs(adjEntry - adjSL);
   let tp;
   if (selectedType === 'buy') {
@@ -763,9 +749,9 @@ function calculate() {
 
   // ── Display
   document.getElementById('entry-label').textContent =
-    selectedType === 'buy' ? 'Adjusted Entry (spread added)' : 'Entry (unchanged)';
+    selectedType === 'buy' ? 'Adjusted Entry (+spread)' : 'Entry (unchanged)';
   document.getElementById('sl-label').textContent =
-    selectedType === 'sell' ? 'Adjusted SL (spread × 2)' : 'Adjusted SL (spread added)';
+    selectedType === 'buy' ? 'Adjusted SL (−spread)' : 'Adjusted SL (+spread ×2)';
 
   document.getElementById('result-entry').textContent   = adjEntry.toFixed(cfg.decimals);
   document.getElementById('result-sl').textContent      = adjSL.toFixed(cfg.decimals);
