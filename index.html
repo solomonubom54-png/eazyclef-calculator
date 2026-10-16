@@ -641,21 +641,38 @@ async function fetchRates(pair) {
   const bustQ = `?_=${Date.now()}`;
   const ART_KEY = 'art_live_faKpQheWpFJyov3lKPDu6jnRJVlA7U1X';
 
-  async function tryAllRatesToday() {
+  // Primary: AllRatesToday keyless simple endpoint (real-time Reuters data)
+  async function tryAllRatesTodaySimple() {
+    const res = await fetchWithTimeout(
+      `https://allratestoday.com/api/rate?source=USD&target=${currency}${bust}`, {}
+    );
+    const data = await res.json();
+    return data.rate;
+  }
+
+  // Backup 1: AllRatesToday authenticated endpoint
+  async function tryAllRatesTodayAuth() {
     const res = await fetchWithTimeout(
       `https://allratestoday.com/api/v1/rates?source=USD&target=${currency}${bust}`,
       { headers: { 'Authorization': `Bearer ${ART_KEY}` } }
     );
     const data = await res.json();
-    return data.rates[currency];
+    // Response is array of rate objects
+    if (Array.isArray(data)) {
+      const item = data.find(r => r.target === currency || r.code === currency);
+      return item ? (item.rate || item.value) : null;
+    }
+    return data.rates ? data.rates[currency] : null;
   }
 
+  // Backup 2: ExchangeRate-API
   async function tryExchangeRateAPI() {
     const res = await fetchWithTimeout(`https://open.er-api.com/v6/latest/USD${bustQ}`, {});
     const data = await res.json();
     return data.rates[currency];
   }
 
+  // Backup 3: Frankfurter
   async function tryFrankfurter() {
     const res = await fetchWithTimeout(`https://api.frankfurter.app/latest?from=USD&to=${currency}${bust}`, {});
     const data = await res.json();
@@ -663,7 +680,7 @@ async function fetchRates(pair) {
   }
 
   let rate = null;
-  for (const api of [tryAllRatesToday, tryExchangeRateAPI, tryFrankfurter]) {
+  for (const api of [tryAllRatesTodaySimple, tryAllRatesTodayAuth, tryExchangeRateAPI, tryFrankfurter]) {
     try { rate = await api(); if (rate) break; } catch { continue; }
   }
 
