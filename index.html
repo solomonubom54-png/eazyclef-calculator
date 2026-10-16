@@ -616,11 +616,11 @@ let selectedType = null;
 let liveRates = {};
 
 // ── FETCH LIVE RATES (3-API fallback chain)
-async function fetchWithTimeout(url, ms = 4000) {
+async function fetchWithTimeout(url, options = {}, ms = 4000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { ...options, signal: controller.signal });
     clearTimeout(timer);
     return res;
   } catch (e) {
@@ -639,27 +639,31 @@ async function fetchRates(pair) {
 
   const bust = `&_=${Date.now()}`;
   const bustQ = `?_=${Date.now()}`;
+  const ART_KEY = 'art_live_faKpQheWpFJyov3lKPDu6jnRJVlA7U1X';
 
-  async function tryFrankfurter() {
-    const res = await fetchWithTimeout(`https://api.frankfurter.app/latest?from=USD&to=${currency}${bust}`);
+  async function tryAllRatesToday() {
+    const res = await fetchWithTimeout(
+      `https://allratestoday.com/api/v1/rates?source=USD&target=${currency}${bust}`,
+      { headers: { 'Authorization': `Bearer ${ART_KEY}` } }
+    );
     const data = await res.json();
     return data.rates[currency];
   }
 
   async function tryExchangeRateAPI() {
-    const res = await fetchWithTimeout(`https://open.er-api.com/v6/latest/USD${bustQ}`);
+    const res = await fetchWithTimeout(`https://open.er-api.com/v6/latest/USD${bustQ}`, {});
     const data = await res.json();
     return data.rates[currency];
   }
 
-  async function tryFawaz() {
-    const res = await fetchWithTimeout(`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json${bustQ}`);
+  async function tryFrankfurter() {
+    const res = await fetchWithTimeout(`https://api.frankfurter.app/latest?from=USD&to=${currency}${bust}`, {});
     const data = await res.json();
-    return data.usd[currency.toLowerCase()];
+    return data.rates[currency];
   }
 
   let rate = null;
-  for (const api of [tryFrankfurter, tryExchangeRateAPI, tryFawaz]) {
+  for (const api of [tryAllRatesToday, tryExchangeRateAPI, tryFrankfurter]) {
     try { rate = await api(); if (rate) break; } catch { continue; }
   }
 
