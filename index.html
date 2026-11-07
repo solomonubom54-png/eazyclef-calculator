@@ -441,8 +441,8 @@ function calculate() {
     ? parseFloat((entry + origDistance * 3).toFixed(cfg.decimals))
     : parseFloat((entry - origDistance * 3).toFixed(cfg.decimals));
 
-  document.getElementById('entry-label').textContent = selectedType === 'buy' ? 'Adjusted Entry (+spread)' : 'Entry (unchanged)';
-  document.getElementById('sl-label').textContent    = selectedType === 'buy' ? 'Adjusted SL (\u2212spread)' : 'Adjusted SL (+spread \xd72)';
+  document.getElementById('entry-label').textContent = selectedType === 'buy' ? 'Adjusted Entry (+spread)' : 'Entry Price (unchanged)';
+  document.getElementById('sl-label').textContent    = selectedType === 'buy' ? 'Adjusted SL (\u2212buffer)' : 'Adjusted SL (+spread+buffer)';
   document.getElementById('result-entry').textContent = adjEntry.toFixed(cfg.decimals);
   document.getElementById('result-sl').textContent    = adjSL.toFixed(cfg.decimals);
   document.getElementById('result-tp').textContent    = tp.toFixed(cfg.decimals);
