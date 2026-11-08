@@ -112,11 +112,11 @@ main { flex: 1; padding: 20px; max-width: 480px; margin: 0 auto; width: 100%; }
     <button class="pair-btn" data-pair="EURUSD">EURUSD</button>
     <button class="pair-btn" data-pair="GBPUSD">GBPUSD</button>
     <button class="pair-btn" data-pair="USDCHF">USDCHF</button>
-    <button class="pair-btn" data-pair="XAUUSD">XAUUSD</button>
     <button class="pair-btn" data-pair="AUDUSD">AUDUSD</button>
     <button class="pair-btn" data-pair="USDCAD">USDCAD</button>
     <button class="pair-btn" data-pair="AUDCHF">AUDCHF</button>
     <button class="pair-btn" data-pair="GBPAUD">GBPAUD</button>
+    <button class="pair-btn" data-pair="XAUUSD">XAUUSD</button>
   </div>
   <div class="section-label">Direction</div>
   <div class="setup-row">
@@ -256,11 +256,11 @@ const PAIRS = {
   EURUSD: { spread: 10,   decimals: 5, type: 'usd_quote' },
   GBPUSD: { spread: 10,   decimals: 5, type: 'usd_quote' },
   USDCHF: { spread: 13,   decimals: 5, type: 'usd_base'  },
-  XAUUSD: { spread: 1.00, decimals: 3, type: 'gold'      }
   AUDUSD: { spread: 10,   decimals: 5, type: 'usd_quote' },
   USDCAD: { spread: 14,   decimals: 5, type: 'usd_base'  },
   AUDCHF: { spread: 10,   decimals: 5, type: 'cross_chf' },
   GBPAUD: { spread: 21,   decimals: 5, type: 'cross_aud' },
+  XAUUSD: { spread: 1.00, decimals: 3, type: 'gold'      }
 };
 
 let selectedPair = null, selectedType = null, liveRates = {}, retryTimer = null, onlineHandler = null;
